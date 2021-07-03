@@ -51,7 +51,7 @@ void LRUReplacer::Unpin(frame_id_t frame_id) {
 
     if (num_pages <= frame_id_map.size()) {
         frame_id_map.erase(cache.back());
-        cache.erase(--cache.end());
+        cache.pop_back();
     }
 
     cache.push_front(frame_id);

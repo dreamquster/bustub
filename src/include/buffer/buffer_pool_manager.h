@@ -152,6 +152,25 @@ class BufferPoolManager {
    */
   void FlushAllPagesImpl();
 
+  /**
+   *
+   * @return true if all pages_ is pinned
+   */
+  bool  IsAllPinned();
+
+  /**
+   *
+   * @return -1 if can not find victim frame
+   */
+  frame_id_t findReplaceFrame();
+
+  /**
+   *
+   * @param page_id
+   * @param page
+   */
+  void InitPage(const page_id_t page_id, Page *page) const;
+
   /** Number of pages in the buffer pool. */
   size_t pool_size_;
   /** Array of buffer pool pages. */
