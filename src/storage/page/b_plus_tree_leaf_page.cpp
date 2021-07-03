@@ -32,6 +32,7 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::Init(page_id_t page_id, page_id_t parent_id, in
   SetParentPageId(parent_id);
   SetMaxSize(max_size);
   SetSize(0);
+  SetPageType(IndexPageType::LEAF_PAGE);
 }
 
 /**
@@ -98,9 +99,9 @@ int B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &valu
     int r = N - 1;
     while (l < r) {
       int mid = (l+r)/2;
-      if (comparator(key, array[mid]) < 0) {
+      if (comparator(key, array[mid].first) < 0) {
         r = mid;
-      } else if (comparator(key, array[mid]) > 0) {
+      } else if (comparator(key, array[mid].first) > 0) {
         l = mid + 1;
       } else {
         assert(0);
@@ -124,13 +125,20 @@ int B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &valu
  * Remove half of key & value pairs from this page to "recipient" page
  */
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveHalfTo(BPlusTreeLeafPage *recipient) {}
+void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveHalfTo(BPlusTreeLeafPage *recipient) {
+    int half_size = GetSize()/2;
+    recipient->CopyNFrom(array+half_size, GetSize() - half_size);
+}
 
 /*
  * Copy starting from items, and copy {size} number of elements into me.
  */
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::CopyNFrom(MappingType *items, int size) {}
+void B_PLUS_TREE_LEAF_PAGE_TYPE::CopyNFrom(MappingType *items, int size) {
+    for (int i = 0; i < size; ++i) {
+        array[i] = items[i];
+    }
+}
 
 /*****************************************************************************
  * LOOKUP
