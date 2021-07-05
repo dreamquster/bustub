@@ -78,7 +78,8 @@ class BPlusTree {
   // read data from file and remove one by one
   void RemoveFromFile(const std::string &file_name, Transaction *transaction = nullptr);
   // expose for test purpose
-  Page *FindLeafPage(const KeyType &key, bool leftMost = false, Operation operation = Operation::READ, Transaction* transaction = nullptr);
+  Page *FindLeafPage(const KeyType &key, bool leftMost = false, Operation operation = Operation::READ,
+          Transaction* transaction = nullptr, std::deque<Page*>* lock_page_que = nullptr);
 
  private:
   void StartNewTree(const KeyType &key, const ValueType &value);
@@ -110,7 +111,12 @@ class BPlusTree {
 
   void ToString(BPlusTreePage *page, BufferPoolManager *bpm) const;
 
-  void UnlockUnpinPages(Operation op, Transaction* transaction) const ;
+  void UnlockPages(Operation op, std::deque<Page *>& deque) const ;
+
+  bool IsSafe(Operation op, Page* cur) const;
+
+  void LockPage(const Operation &op, Transaction *transaction, std::deque<Page *> *lock_page_que,
+                Page *child) const;
   // member variable
   std::string index_name_;
   page_id_t root_page_id_;

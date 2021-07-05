@@ -43,7 +43,18 @@ bool BPLUSTREE_TYPE::IsEmpty() const { return 0==node_size_; }
  */
 INDEX_TEMPLATE_ARGUMENTS
 bool BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result, Transaction *transaction) {
-  return false;
+    std::deque<Page*> lock_page_deq;
+    auto leafPage = FindLeafPage(key, false, Operation::READ, transaction, &lock_page_deq);
+    if (nullptr == leafPage) {
+        UnlockPages(Operation::READ, lock_page_deq);
+        return false;
+    }
+    auto leafNode = reinterpret_cast<LeafPage * >(leafPage->GetData());
+    ValueType v;
+    bool  res = leafNode->Lookup(key,  &v, comparator_);
+    result->push_back(v);
+    UnlockPages(Operation::READ, lock_page_deq);
+    return res;
 }
 
 /*****************************************************************************
@@ -100,15 +111,17 @@ void BPLUSTREE_TYPE::StartNewTree(const KeyType &key, const ValueType &value) {
  */
 INDEX_TEMPLATE_ARGUMENTS
 bool BPLUSTREE_TYPE::InsertIntoLeaf(const KeyType &key, const ValueType &value, Transaction *transaction) {
-  auto leafPage = FindLeafPage(key, false, Operation::INSERT, transaction);
+  std::deque<Page*> lock_page_deq;
+  auto leafPage = FindLeafPage(key, false, Operation::INSERT, transaction, &lock_page_deq);
   auto leafNode = reinterpret_cast<LeafPage * >(leafPage->GetData());
-  int keyIdx = leafNode->KeyIndex(key, comparator_);
-  if (-1 != keyIdx) {
+  ValueType v;
+  if (leafNode->Lookup(key,  &v, comparator_)) {
     // key exist in leaf page
+      UnlockPages(Operation::READ, lock_page_deq);
     return false;
   }
   leafNode->Insert(key, value, comparator_);
-  if (leafNode->GetMaxSize() <= leafNode->GetSize()) {
+  if (leafNode->GetMaxSize() < leafNode->GetSize()) {
     // to split
     auto new_leaf_node = Split<LeafPage>(leafNode);
     // insert leaf linked list
@@ -118,7 +131,7 @@ bool BPLUSTREE_TYPE::InsertIntoLeaf(const KeyType &key, const ValueType &value, 
     InsertIntoParent(leafNode, new_leaf_node->KeyAt(0), new_leaf_node, transaction);
   }
   // todo unlock flush all dirty page?
-    UnlockUnpinPages(Operation::READ, transaction);
+    UnlockPages(Operation::INSERT, lock_page_deq);
   return true;
 }
 
@@ -312,68 +325,87 @@ INDEXITERATOR_TYPE BPLUSTREE_TYPE::end() { return INDEXITERATOR_TYPE(); }
  * the left most leaf page
  */
 INDEX_TEMPLATE_ARGUMENTS
-Page *BPLUSTREE_TYPE::FindLeafPage(const KeyType &key, bool leftMost, Operation op, Transaction* transaction) {
-  if (IsEmpty()) {
-      return nullptr;
-  }
-  auto root = buffer_pool_manager_->FetchPage(root_page_id_);
-  if (nullptr == root) {
-      throw "no page can find page_id:" + std::to_string(root_page_id_);
-  }
-
-  if (Operation::READ == op) {
-    root->RLatch();
-  } else {
-    root->WLatch();
-  }
-
-  if (nullptr != transaction) {
-    transaction->AddIntoPageSet(root);
-  }
-
-  auto cur = reinterpret_cast<BPlusTreePage*>(root->GetData());
-  while (!cur->IsLeafPage()) {
-    auto cur_internal = reinterpret_cast<InternalPage *>(cur);
-    page_id_t child_page_id;
-    if (leftMost) {
-      child_page_id = cur_internal->ValueAt(0);
-    } else {
-      child_page_id = cur_internal->Lookup(key, comparator_);
-    }
-
-    auto child = buffer_pool_manager_->FetchPage(child_page_id);
-    if (nullptr == child) {
-      throw "not find child page page_id:" + std::to_string(child_page_id);
-    }
-
+void BPLUSTREE_TYPE::LockPage(const Operation &op, Transaction *transaction, std::deque<Page *> *lock_page_que,
+                         Page* child) const {
     if (Operation::READ == op) {
-      // decend to child page, unlock parent page
-      child->RLatch();
-      UnlockUnpinPages(op, transaction);
+        child->RLatch();
     } else {
-      child->WLatch();
+        child->WLatch();
     }
-
+    if (IsSafe(op, child)) {
+        UnlockPages(op, *lock_page_que);
+    }
+    lock_page_que->push_back(child);
     if (nullptr != transaction) {
-      transaction->AddIntoPageSet(child);
+        transaction->AddIntoPageSet(child);
     }
-
-    cur = reinterpret_cast<BPlusTreePage*>(child->GetData());
-  }
-  return reinterpret_cast<Page*>(cur);
 }
 
 INDEX_TEMPLATE_ARGUMENTS
-void BPLUSTREE_TYPE::UnlockUnpinPages(Operation op, Transaction* transaction) const {
-  for (auto page : *(transaction->GetPageSet())) {
-    if (Operation::READ == op) {
-      page->RUnlatch();
-    } else {
-      page->WUnlatch();
+Page *BPLUSTREE_TYPE::FindLeafPage(const KeyType &key, bool leftMost, Operation op, Transaction *transaction,
+                                   std::deque<Page *> *lock_page_que) {
+    if (IsEmpty()) {
+        return nullptr;
     }
-    buffer_pool_manager_->UnpinPage(page->GetPageId(), true);
-  }
+    auto root = buffer_pool_manager_->FetchPage(root_page_id_);
+    if (nullptr == root) {
+        throw "no page can find page_id:" + std::to_string(root_page_id_);
+    }
+
+    LockPage(op, transaction, lock_page_que, root);
+
+    auto cur = reinterpret_cast<BPlusTreePage *>(root->GetData());
+    while (!cur->IsLeafPage()) {
+        auto cur_internal = reinterpret_cast<InternalPage *>(cur);
+        page_id_t child_page_id;
+        if (leftMost) {
+            child_page_id = cur_internal->ValueAt(0);
+        } else {
+            child_page_id = cur_internal->Lookup(key, comparator_);
+        }
+
+        auto child = buffer_pool_manager_->FetchPage(child_page_id);
+        if (nullptr == child) {
+            throw "not find child page page_id:" + std::to_string(child_page_id);
+        }
+
+        LockPage(op, transaction, lock_page_que, child);
+
+        cur = reinterpret_cast<BPlusTreePage *>(child->GetData());
+    }
+    return reinterpret_cast<Page *>(cur);
 }
+
+INDEX_TEMPLATE_ARGUMENTS
+void BPLUSTREE_TYPE::UnlockPages(Operation op, std::deque<Page *>& deque) const {
+    while (!deque.empty()) {
+        auto page = deque.back();
+        if (Operation::READ == op) {
+            page->RUnlatch();
+        } else {
+            page->WUnlatch();
+        }
+        deque.pop_back();
+    }
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+bool BPLUSTREE_TYPE::IsSafe(Operation op, Page* child) const {
+    auto cur = reinterpret_cast<BPlusTreePage*>(child->GetData());
+    if (Operation::READ == op) {
+        return true;
+    } else if (Operation::INSERT == op) {
+        // not full
+        return cur->GetSize() < cur->GetMaxSize();
+    } else if (Operation::DELETE == op) {
+        // at least half-full
+        return cur->GetMinSize() < cur->GetSize();
+    }
+    return false;
+}
+
+
+
 
 /*
  * Update/Insert root page id in header page(where page_id = 0, header_page is

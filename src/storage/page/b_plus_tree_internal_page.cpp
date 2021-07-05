@@ -86,7 +86,7 @@ INDEX_TEMPLATE_ARGUMENTS
 ValueType B_PLUS_TREE_INTERNAL_PAGE_TYPE::Lookup(const KeyType &key, const KeyComparator &comparator) const {
     int N = GetSize();
     for (int i = 1; i < N; ++i) {
-        if (comparator(key, array[i].first) <= 0) {
+        if (comparator(key, array[i].first) < 0) {
             return array[i-1].second;
         }
     }
@@ -108,7 +108,7 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::PopulateNewRoot(const ValueType &old_value,
 
     array[0].second = old_value;
     array[1]= {new_key,  new_value};
-    SetSize(1);
+    SetSize(2);
 }
 /*
  * Insert new_key & new_value pair right after the pair with its value ==
@@ -125,10 +125,10 @@ int B_PLUS_TREE_INTERNAL_PAGE_TYPE::InsertNodeAfter(const ValueType &old_value, 
             break;
         }
     }
-    for (int i = N; oldi < i; i--) {
+    for (int i = N; oldi + 1 < i; i--) {
         array[i] = array[i-1];
     }
-    array[oldi] = {new_key, new_value};
+    array[oldi + 1] = {new_key, new_value};
     IncreaseSize(1);
     return GetSize();
 }
@@ -143,7 +143,9 @@ INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_INTERNAL_PAGE_TYPE::MoveHalfTo(BPlusTreeInternalPage *recipient,
                                                 BufferPoolManager *buffer_pool_manager) {
     int half_size = GetSize()/2;
-    recipient->CopyNFrom(array + half_size, GetSize() - half_size, buffer_pool_manager);
+    int right_size = GetSize() - half_size;
+    recipient->CopyNFrom(array + half_size, right_size, buffer_pool_manager);
+    SetSize(half_size);
 }
 
 /* Copy entries into me, starting from {items} and copy {size} entries.
@@ -152,13 +154,13 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::MoveHalfTo(BPlusTreeInternalPage *recipient
  */
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_INTERNAL_PAGE_TYPE::CopyNFrom(MappingType *items, int size, BufferPoolManager *buffer_pool_manager) {
+    SetSize(size);
     for (int i = 0; i < size; ++i) {
         array[i] = items[i];
         auto child_page = reinterpret_cast<BPlusTreePage *>(buffer_pool_manager->FetchPage(ValueAt(i))->GetData());
         child_page->SetParentPageId(GetPageId());
         buffer_pool_manager->UnpinPage(child_page->GetPageId(), true);
     }
-
 }
 
 /*****************************************************************************
