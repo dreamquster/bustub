@@ -17,6 +17,9 @@
 #include "storage/page/header_page.h"
 
 namespace bustub {
+
+    INDEX_TEMPLATE_ARGUMENTS thread_local bool BPLUSTREE_TYPE::root_lock = false;
+
 INDEX_TEMPLATE_ARGUMENTS
 BPLUSTREE_TYPE::BPlusTree(std::string name, BufferPoolManager *buffer_pool_manager, const KeyComparator &comparator,
                           int leaf_max_size, int internal_max_size)
@@ -32,7 +35,9 @@ BPLUSTREE_TYPE::BPlusTree(std::string name, BufferPoolManager *buffer_pool_manag
  * Helper function to decide whether current b+tree is empty
  */
 INDEX_TEMPLATE_ARGUMENTS
-bool BPLUSTREE_TYPE::IsEmpty() const { return 0==node_size_; }
+bool BPLUSTREE_TYPE::IsEmpty() const {
+    return root_page_id_ == INVALID_PAGE_ID;
+}
 /*****************************************************************************
  * SEARCH
  *****************************************************************************/
@@ -69,15 +74,18 @@ bool BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
  */
 INDEX_TEMPLATE_ARGUMENTS
 bool BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transaction *transaction) {
-  if (IsEmpty()) {
+    LockRootPage(true);
+  if (INVALID_PAGE_ID == root_page_id_) {
     StartNewTree(key, value);
     node_size_++;
+    UnlockRootPage(true);
     return true;
   }
   bool hasUnique = InsertIntoLeaf(key, value, transaction);
   if (hasUnique) {
       node_size_++;
   }
+  UnlockRootPage(true);
     return hasUnique;
 }
 /*
@@ -117,7 +125,7 @@ bool BPLUSTREE_TYPE::InsertIntoLeaf(const KeyType &key, const ValueType &value, 
   ValueType v;
   if (leafNode->Lookup(key,  &v, comparator_)) {
     // key exist in leaf page
-      UnlockPages(Operation::READ, lock_page_deq);
+      UnlockPages(Operation::INSERT, lock_page_deq);
     return false;
   }
   leafNode->Insert(key, value, comparator_);
@@ -230,6 +238,7 @@ void BPLUSTREE_TYPE::InsertIntoParent(BPlusTreePage *old_node, const KeyType &ke
  */
 INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *transaction) {
+    LockRootPage(true);
     if (IsEmpty()) {
         return;
     }
@@ -248,6 +257,7 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *transaction) {
         CoalesceOrRedistribute(leafNode, transaction);
     }
     UnlockPages(Operation::DELETE, lock_page_deq);
+    UnlockRootPage(true);
     node_size_ -= (src_size - size);
 }
 
@@ -460,14 +470,15 @@ INDEXITERATOR_TYPE BPLUSTREE_TYPE::end() {
  * the left most leaf page
  */
 INDEX_TEMPLATE_ARGUMENTS
-void BPLUSTREE_TYPE::LockPage(const Operation &op, Transaction *transaction, std::deque<Page *> *lock_page_que,
-                         Page* child) const {
+void BPLUSTREE_TYPE::CrabingFetchPage(const Operation &op, Transaction *transaction, std::deque<Page *> *lock_page_que,
+                                      Page *child)  {
     if (Operation::READ == op) {
         child->RLatch();
     } else {
         child->WLatch();
     }
-    if (IsSafe(op, child)) {
+    if (root_page_id_ != child->GetPageId() && IsSafe(op, child)) {
+        UnlockRootPage(Operation::READ != op);
         UnlockPages(op, *lock_page_que);
     }
     lock_page_que->push_back(child);
@@ -479,6 +490,7 @@ void BPLUSTREE_TYPE::LockPage(const Operation &op, Transaction *transaction, std
 INDEX_TEMPLATE_ARGUMENTS
 Page *BPLUSTREE_TYPE::FindLeafPage(const KeyType &key, bool leftMost, Operation op, Transaction *transaction,
                                    std::deque<Page *> *lock_page_que) {
+    LockRootPage(Operation::READ != op);
     if (IsEmpty()) {
         return nullptr;
     }
@@ -487,7 +499,7 @@ Page *BPLUSTREE_TYPE::FindLeafPage(const KeyType &key, bool leftMost, Operation 
         throw "no page can find page_id:" + std::to_string(root_page_id_);
     }
 
-    LockPage(op, transaction, lock_page_que, root);
+    CrabingFetchPage(op, transaction, lock_page_que, root);
 
     auto cur = reinterpret_cast<BPlusTreePage *>(root->GetData());
     while (!cur->IsLeafPage()) {
@@ -504,7 +516,7 @@ Page *BPLUSTREE_TYPE::FindLeafPage(const KeyType &key, bool leftMost, Operation 
             throw "not find child page page_id:" + std::to_string(child_page_id);
         }
 
-        LockPage(op, transaction, lock_page_que, child);
+        CrabingFetchPage(op, transaction, lock_page_que, child);
 
         cur = reinterpret_cast<BPlusTreePage *>(child->GetData());
     }

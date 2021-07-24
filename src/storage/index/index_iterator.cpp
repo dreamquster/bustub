@@ -49,9 +49,9 @@ INDEXITERATOR_TYPE &INDEXITERATOR_TYPE::operator++() {
     }
 
     auto leaf_page = reinterpret_cast<LeafPage*>(page->GetData());
-    if (idx_ < leaf_page->GetSize()) {
-        idx_++;
-    } else if (INVALID_PAGE_ID != leaf_page->GetNextPageId()){
+    idx_++;
+    if (idx_ >= leaf_page->GetSize() &&
+        INVALID_PAGE_ID != leaf_page->GetNextPageId()){
         cur_page_id_ = leaf_page->GetNextPageId();
         idx_ = 0;
     }

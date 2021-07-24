@@ -115,8 +115,24 @@ class BPlusTree {
 
   bool IsSafe(Operation op, Page* cur) const;
 
-  void LockPage(const Operation &op, Transaction *transaction, std::deque<Page *> *lock_page_que,
-                Page *child) const;
+  void CrabingFetchPage(const Operation &op, Transaction *transaction, std::deque<Page *> *lock_page_que,
+                        Page *child);
+
+    inline void LockRootPage(bool exclusive) {
+    if (!root_lock) {
+        // std::cout<<"LockRootPage:"<<std::this_thread::get_id()<<std::endl;
+      root_page_mutex_.lock();
+      root_lock = true;
+    }
+  }
+
+  inline void UnlockRootPage(bool exclusive) {
+      if (root_lock) {
+          // std::cout<<"UnlockRootPage:"<<std::this_thread::get_id()<<std::endl;
+        root_page_mutex_.unlock();
+        root_lock = false;
+      }
+    }
   // member variable
   std::string index_name_;
   page_id_t root_page_id_;
@@ -124,6 +140,8 @@ class BPlusTree {
   KeyComparator comparator_;
   int leaf_max_size_;
   int internal_max_size_;
+  std::mutex root_page_mutex_;
+  static thread_local bool root_lock;
   int node_size_;
 };
 
