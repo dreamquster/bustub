@@ -426,7 +426,12 @@ INDEX_TEMPLATE_ARGUMENTS
 INDEXITERATOR_TYPE BPLUSTREE_TYPE::begin() {
     KeyType mini_key;
     std::deque<Page*> lock_page_deq;
+    LockRootPage(false);
     auto leafPage = FindLeafPage(mini_key, true, Operation::READ, nullptr, &lock_page_deq);
+    UnlockRootPage(false);
+    if (nullptr == leafPage) {
+        return INDEXITERATOR_TYPE(INVALID_PAGE_ID, 0, buffer_pool_manager_);
+    }
     UnlockPages(Operation::READ, lock_page_deq);
     return INDEXITERATOR_TYPE(leafPage->GetPageId(), 0, buffer_pool_manager_);
 }
@@ -439,9 +444,16 @@ INDEXITERATOR_TYPE BPLUSTREE_TYPE::begin() {
 INDEX_TEMPLATE_ARGUMENTS
 INDEXITERATOR_TYPE BPLUSTREE_TYPE::Begin(const KeyType &key) {
     std::deque<Page*> lock_page_deq;
+    LockRootPage(false);
     auto leafPage = FindLeafPage(key, false, Operation::READ, nullptr, &lock_page_deq);
+    UnlockRootPage(false);
+    if (nullptr == leafPage) {
+        return INDEXITERATOR_TYPE(INVALID_PAGE_ID, 0, buffer_pool_manager_);
+    }
+    auto leaf_page = reinterpret_cast<LeafPage*>(leafPage->GetData());
+    auto keyIdx = leaf_page->KeyIndex(key, comparator_);
     UnlockPages(Operation::READ, lock_page_deq);
-    return INDEXITERATOR_TYPE(leafPage->GetPageId(), 0, buffer_pool_manager_);
+    return INDEXITERATOR_TYPE(leafPage->GetPageId(), keyIdx, buffer_pool_manager_);
 }
 
 /*
@@ -453,7 +465,12 @@ INDEX_TEMPLATE_ARGUMENTS
 INDEXITERATOR_TYPE BPLUSTREE_TYPE::end() {
     KeyType mini_key;
     std::deque<Page*> lock_page_deq;
+    LockRootPage(false);
     auto leafPage = FindLeafPage(mini_key, true, Operation::READ, nullptr, &lock_page_deq);
+    UnlockRootPage(false);
+    if (nullptr == leafPage) {
+        return INDEXITERATOR_TYPE(INVALID_PAGE_ID, 0, buffer_pool_manager_);
+    }
     auto leaf_page_node = reinterpret_cast<LeafPage *>(leafPage->GetData());
     while (INVALID_PAGE_ID != leaf_page_node->GetNextPageId()) {
         leaf_page_node = reinterpret_cast<LeafPage *>(buffer_pool_manager_->FetchPage(leaf_page_node->GetNextPageId())->GetData());
