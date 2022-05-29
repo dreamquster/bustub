@@ -23,6 +23,7 @@ IndexScanExecutor::IndexScanExecutor(ExecutorContext *exec_ctx, const IndexScanP
 void IndexScanExecutor::Init() {
   bPlusTreeIndex =  (BPlusTreeIndex<GenericKey<64>, RID, GenericComparator<64>>*)(indexInfo_->index_.get());
   indexIter = bPlusTreeIndex->GetBeginIterator();
+  table_meta_ = exec_ctx_->GetCatalog()->GetTable(indexInfo_->table_name_);;
 }
 
 bool IndexScanExecutor::Next(Tuple *tuple, RID *rid) {
@@ -31,13 +32,20 @@ bool IndexScanExecutor::Next(Tuple *tuple, RID *rid) {
   }
   ++indexIter;
   auto key = *indexIter;
-  *rid = key.second;
 
   auto schema = plan_->OutputSchema();
-  std::vector<Value> vals;
-  vals.reserve(schema->GetColumnCount());
-  // todo: fixed how to get key value
-  return false;
+  Tuple key_tuple;
+  if (table_meta_->table_->GetTuple(key.second, &key_tuple, exec_ctx_->GetTransaction())) {
+    auto predicate = plan_->GetPredicate();
+    if (nullptr == predicate
+          || predicate->Evaluate(&key_tuple, schema).GetAs<bool>()) {
+      *tuple = key_tuple;
+      *rid = key.second;
+      return true;
+    }
+  }
+
+  return Next(tuple, rid);
 }
 
 }  // namespace bustub

@@ -48,6 +48,9 @@ bool InsertExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) {
     // TODO(student): handle exceptions
     throw Exception("failed child execution in InsertExecutor");
   }
+  for (auto rowValues : resultSet) {
+    InsertIntoWithIndex(rowValues);
+  }
   return false;
 }
 void InsertExecutor::InsertIntoWithIndex(Tuple tuple) {

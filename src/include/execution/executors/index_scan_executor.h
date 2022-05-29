@@ -46,6 +46,7 @@ class IndexScanExecutor : public AbstractExecutor {
   const IndexScanPlanNode *plan_;
   const std::unique_ptr<Index> table_;
   const IndexInfo*  indexInfo_;
+  const TableMetadata* table_meta_;
   BPlusTreeIndex<GenericKey<64>, RID, GenericComparator<64>>* bPlusTreeIndex;
   IndexIterator<GenericKey<64>, RID, GenericComparator<64>> indexIter;
 };
