@@ -82,8 +82,7 @@ class Catalog {
     auto metadata = std::make_unique<TableMetadata>(schema, table_name, std::move(table), toid);
     names_[table_name]=toid;
     tables_[toid] = std::move(metadata);
-    auto  meta_ptr = metadata.get();
-    return meta_ptr;
+    return tables_[toid].get();
   }
 
   /** @return table metadata by name */
@@ -122,7 +121,8 @@ class Catalog {
     auto index_oid = next_index_oid_++;
     auto indexMeta = new IndexMetadata(index_name, table_name, &key_schema ,key_attrs);
     auto indexInfo = std::unique_ptr<Index>(new BPlusTreeIndex<GenericKey<64>, RID, GenericComparator<64>>(indexMeta, bpm_));
-    auto index = std::make_unique<IndexInfo>(schema, index_name, indexInfo,index_oid, table_name, keysize);
+
+    auto index = std::make_unique<IndexInfo>(schema, index_name, std::move(indexInfo), index_oid, table_name, keysize);
     index_names_[table_name][index_name] =  index_oid;
     indexes_[index_oid] = std::move(index);
     return indexes_[index_oid].get();
