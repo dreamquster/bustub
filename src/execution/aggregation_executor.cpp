@@ -27,13 +27,13 @@ AggregationExecutor::AggregationExecutor(ExecutorContext *exec_ctx, const Aggreg
 const AbstractExecutor *AggregationExecutor::GetChildExecutor() const { return child_.get(); }
 
 void AggregationExecutor::Init() {
-  aht_iterator_ = aht_.Begin();
   child_->Init();
   Tuple tuple;
   RID rid;
   while (child_->Next(&tuple, &rid)) {
     aht_.InsertCombine(MakeKey(&tuple), MakeVal(&tuple));
   }
+  aht_iterator_ = aht_.Begin();
 }
 
 bool AggregationExecutor::Next(Tuple *tuple, RID *rid) {
