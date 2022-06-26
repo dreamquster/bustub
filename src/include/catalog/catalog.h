@@ -119,10 +119,10 @@ class Catalog {
     BUSTUB_ASSERT(index_names_.count(table_name) == 0, "Table do not exist!");
     BUSTUB_ASSERT(index_names_[table_name].count(index_name) == 0, "Index names should be unique!");
     auto index_oid = next_index_oid_++;
-    auto indexMeta = new IndexMetadata(index_name, table_name, &key_schema ,key_attrs);
+    auto indexMeta = new IndexMetadata(index_name, table_name, &schema ,key_attrs);
     auto indexInfo = std::unique_ptr<Index>(new BPlusTreeIndex<GenericKey<64>, RID, GenericComparator<64>>(indexMeta, bpm_));
 
-    auto index = std::make_unique<IndexInfo>(schema, index_name, std::move(indexInfo), index_oid, table_name, keysize);
+    auto index = std::make_unique<IndexInfo>(key_schema, index_name, std::move(indexInfo), index_oid, table_name, keysize);
     index_names_[table_name][index_name] =  index_oid;
     indexes_[index_oid] = std::move(index);
     return indexes_[index_oid].get();

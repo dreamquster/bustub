@@ -42,7 +42,7 @@ class SeqScanExecutor : public AbstractExecutor {
  private:
   /** The sequential scan plan node to be executed. */
   const SeqScanPlanNode *plan_;
-  std::unique_ptr<TableHeap> table_;
+  TableHeap* table_;
   TableMetadata*  tableMetadata;
   TableIterator tableIter_;
 };

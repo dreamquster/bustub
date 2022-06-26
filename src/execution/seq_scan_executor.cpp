@@ -18,7 +18,7 @@ SeqScanExecutor::SeqScanExecutor(ExecutorContext *exec_ctx, const SeqScanPlanNod
   this->plan_ = plan;
   auto tableOid = plan_->GetTableOid();
   tableMetadata = exec_ctx_->GetCatalog()->GetTable(tableOid);
-  table_ = std::move(tableMetadata->table_);
+  table_ = tableMetadata->table_.get();
 }
 
 void SeqScanExecutor::Init() {
